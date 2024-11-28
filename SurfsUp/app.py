@@ -52,20 +52,22 @@ def temp_min_max_avg(station, start_date, end_date):
     session = Session(engine)
     # Query
     temp_results = session.query(
-        func.min(Measurement.tobs).label('lowest'),
-        func.max(Measurement.tobs).label('highest'),
-        func.avg(Measurement.tobs).label('average')).filter(Measurement.station == station,
+        func.min(Measurement.tobs).label('tmin'),
+        func.max(Measurement.tobs).label('tmax'),
+        func.avg(Measurement.tobs).label('tavg')).filter(Measurement.station == station,
                                                             Measurement.date >= start_date,
                                                             Measurement.date <= end_date).all()
+
     session.close()
-    return jsonify({
-        station: [
-            start_date,
-            end_date: [
-                
-            ]
-        ]
-    })
+
+    results = temp_results[0]
+    output = {
+        'tmin': results.tmin, 
+        'tavg': round(results.tavg, 1),
+        'tmax': results.tmax}
+
+    return output
+
     
 #################################################
 # Flask Setup
@@ -86,7 +88,9 @@ def home():
             '/api/v1.0/stations',
             '/api/v1.0/tobs',
             '/api/v1.0/<start>',
-            '/api/v1.0/<start>/<end>'
+            '/api/v1.0/<start>/<end>',
+            '/api/v1.0/<station>'
+            '/api/v1.0/<station>/<start>/<end>'
         ]
     })
 
@@ -160,32 +164,80 @@ def tobs():
     return jsonify(output)  
 
 @app.route('/api/v1.0/<start>')
-def start():
+def start(start):
     session = Session(engine)
-    '''Return a list of dates and temperature observations from the most active station for the previous year'''
-    most_active_station = session.query(Measurement.station).\
-    group_by(Measurement.station).\
-        order_by(func.count(Measurement.station).desc()).first()
-    most_active_station_id = most_active_station[0]
+    '''Return temp min, max and avg for most active station begining at entered date YYYY-MM-DD'''
+    station = most_active_station()
+    start_date = start
+    end_date = '2017-08-23' # last data in dataset 
     
-    recent_date = '2017-08-23'
-    prev_year = '2016-08-23'
-    
-    results = session.query(Measurement.date,
-                        Measurement.tobs).filter(Measurement.date >= prev_year,
-            Measurement.date <= recent_date,
-            Measurement.station == most_active_station_id).order_by(Measurement.date).all()
-    session.close()
-   
-    last_year = []
-    for date, tobs in results:
-        last_year_dict = {date: tobs}
-        
-        last_year.append(last_year_dict)
+    result = temp_min_max_avg(station, start_date, end_date)
+     
     output = {
-        most_active_station_id: last_year}
-    # return jsonify(last_year)
+        station: {
+            'date_range': [start_date, end_date],
+            'stats': result
+            }
+        }
+           
     return jsonify(output)  
+
+@app.route('/api/v1.0/<start>/<end>')
+def start_end(start, end):
+    session = Session(engine)
+    '''Return temp min, max and avg for most active station YYYY-MM-DD to YYYY-MM-DD'''
+    station = most_active_station()
+    start_date = start
+    end_date = end 
+        
+    result = temp_min_max_avg(station, start_date, end_date)
+     
+    output = {
+        station: {
+            'date_range': [start_date, end_date],
+            'stats': result
+            }
+        }
+           
+    return jsonify(output) 
+
+@app.route('/api/v1.0/<station>')
+def station(station):
+    session = Session(engine)
+    '''Return temp min, max and avg for most active station YYYY-MM-DD to YYYY-MM-DD'''
+    station = station
+    start_date = 2000
+    end_date = 2020
+        
+    result = temp_min_max_avg(station, start_date, end_date)
+     
+    output = {
+        station: {
+            'date_range': [start_date, end_date],
+            'stats': result
+            }
+        }
+           
+    return jsonify(output) 
+
+@app.route('/api/v1.0/<station>/<start>/<end>')
+def station_start_end(station, start, end):
+    session = Session(engine)
+    '''Return temp min, max and avg for most active station YYYY-MM-DD to YYYY-MM-DD'''
+    station = station
+    start_date = start
+    end_date = end 
+        
+    result = temp_min_max_avg(station, start_date, end_date)
+     
+    output = {
+        station: {
+            'date_range': [start_date, end_date],
+            'stats': result
+            }
+        }
+           
+    return jsonify(output) 
 
 if __name__ == '__main__':
     app.run(debug=True)
