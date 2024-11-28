@@ -1,5 +1,7 @@
 # Import the dependencies.
 import numpy as np
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
@@ -24,9 +26,34 @@ Station = Base.classes.station
 
 # Create our session (link) from Python to the DB
 
+'''what goes here????'''
+
+
 #################################################
 # Functions
 #################################################
+def most_recent_date():
+    session = Session(engine)
+    date = session.query(Measurement.date).order_by(Measurement.date.desc()).first()[0]
+    session.close()
+    return date
+
+def one_year_earlier(date):
+    date_obj = datetime.strptime(date, '%Y-%m-%d')
+    new_date_obj = date_obj - relativedelta(years=1)
+    new_date = new_date_obj.strftime('%Y-%m-%d')
+    return new_date
+
+def prcp_data(start_date, end_date):
+    session = Session(engine)
+    result = session.query(Measurement.date,
+                            Measurement.prcp).\
+                                filter(Measurement.date >= start_date,
+                                       Measurement.date <= end_date).\
+                                           order_by(Measurement.date).all()
+    session.close()
+    return result
+
 def most_active_station():
     session = Session(engine)
     # Query Measurement for the most active station
@@ -57,15 +84,12 @@ def temp_min_max_avg(station, start_date, end_date):
         func.avg(Measurement.tobs).label('tavg')).filter(Measurement.station == station,
                                                             Measurement.date >= start_date,
                                                             Measurement.date <= end_date).all()
-
     session.close()
-
     results = temp_results[0]
     output = {
         'tmin': results.tmin, 
         'tavg': round(results.tavg, 1),
         'tmax': results.tmax}
-
     return output
 
     
@@ -94,18 +118,14 @@ def home():
         ]
     })
 
+
 @app.route('/api/v1.0/precipitation')
 def precipitation():
-    session = Session(engine)
     '''Return all precipitation data'''
-    recent_date = '2017-08-23'
-    prev_year = '2016-08-23'
-    results = session.query(Measurement.date,
-                            Measurement.prcp).\
-        filter(Measurement.date >= prev_year,
-            Measurement.date <= recent_date).\
-        order_by(Measurement.date).all()
-    session.close()
+    end_date = most_recent_date()
+    start_date = one_year_earlier(end_date)
+  
+    results = prcp_data(start_date, end_date)
     
     last_year = []
     for date, prcp in results:
@@ -136,20 +156,17 @@ def stations():
                 'elevation': elevation
             }
         }
-        
         all_stations.append(station_dict)
-    
     return jsonify(all_stations)
 
 
 @app.route('/api/v1.0/tobs')
 def tobs():
     '''Return a list of dates and temperature observations from the most active station for the previous year'''
-    session = Session(engine)
     station = most_active_station()
     
-    end_date = '2017-08-23'
-    start_date = '2016-08-23'
+    end_date = most_recent_date()
+    start_date = one_year_earlier(end_date)
     
     results = tobs_query(station, start_date, end_date)
    
@@ -160,16 +177,14 @@ def tobs():
         
     output = {
         station: last_year}
-
     return jsonify(output)  
 
 @app.route('/api/v1.0/<start>')
 def start(start):
-    session = Session(engine)
     '''Return temp min, max and avg for most active station begining at entered date YYYY-MM-DD'''
     station = most_active_station()
     start_date = start
-    end_date = '2017-08-23' # last data in dataset 
+    end_date = most_recent_date()
     
     result = temp_min_max_avg(station, start_date, end_date)
      
@@ -178,13 +193,11 @@ def start(start):
             'date_range': [start_date, end_date],
             'stats': result
             }
-        }
-           
+        }  
     return jsonify(output)  
 
 @app.route('/api/v1.0/<start>/<end>')
 def start_end(start, end):
-    session = Session(engine)
     '''Return temp min, max and avg for most active station YYYY-MM-DD to YYYY-MM-DD'''
     station = most_active_station()
     start_date = start
@@ -198,13 +211,11 @@ def start_end(start, end):
             'stats': result
             }
         }
-           
     return jsonify(output) 
 
 @app.route('/api/v1.0/<station>')
 def station(station):
-    session = Session(engine)
-    '''Return temp min, max and avg for most active station YYYY-MM-DD to YYYY-MM-DD'''
+    '''Return temp min, max and avg for named station'''
     station = station
     start_date = 2000
     end_date = 2020
@@ -217,13 +228,11 @@ def station(station):
             'stats': result
             }
         }
-           
     return jsonify(output) 
 
 @app.route('/api/v1.0/<station>/<start>/<end>')
 def station_start_end(station, start, end):
-    session = Session(engine)
-    '''Return temp min, max and avg for most active station YYYY-MM-DD to YYYY-MM-DD'''
+    '''Return temp min, max and avg for named station YYYY-MM-DD to YYYY-MM-DD'''
     station = station
     start_date = start
     end_date = end 
@@ -236,7 +245,6 @@ def station_start_end(station, start, end):
             'stats': result
             }
         }
-           
     return jsonify(output) 
 
 if __name__ == '__main__':
